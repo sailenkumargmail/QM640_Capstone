@@ -1,0 +1,9 @@
+*.pdf binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.joblib binary
+*.parquet binary
+*.docx binary
+*.xlsx binary
+*.ipynb -diff

@@ -5,6 +5,10 @@ Capstone project (QM640) implementing the framework described in
 a credit-default scoring pipeline that is (1) accurate, (2) explainable, and
 (3) fairness-audited and bias-mitigated.
 
+**See [docs/DEVELOPER_GUIDE.pdf](docs/DEVELOPER_GUIDE.pdf) (or the
+[Markdown source](docs/DEVELOPER_GUIDE.md)) for the full high-level design,
+setup, and running guide.**
+
 **Scope (MVP, per mentor/reviewer critique):**
 - **Home Credit Default Risk** (Kaggle) — full pipeline: EDA, feature
   engineering, baseline + tuned models (Logistic Regression, XGBoost),

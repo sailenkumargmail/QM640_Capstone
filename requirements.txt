@@ -17,3 +17,7 @@ pytest>=8.0
 kaggle>=1.6
 tabulate>=0.9
 jupyter>=1.0
+
+# Developer Guide PDF generation (scripts/build_developer_guide_pdf.py)
+markdown>=3.6
+xhtml2pdf>=0.2.16
