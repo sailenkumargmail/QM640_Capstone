@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+
+# Data (raw/processed data is not committed; see data/README.md for how to obtain it)
+data/raw/*
+data/processed/*
+data/external/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!data/external/.gitkeep
+
+# Trained model artifacts
+models/*
+!models/.gitkeep
+
+# Reports / generated figures
+reports/figures/*
+reports/model_performance/*
+!reports/figures/.gitkeep
+!reports/model_performance/.gitkeep
+
+# Credentials
+kaggle.json
+.kaggle/
+*.env
+.env
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/

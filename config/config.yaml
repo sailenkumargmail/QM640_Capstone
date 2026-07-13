@@ -1,0 +1,47 @@
+# Central configuration for the credit-default capstone pipeline.
+# All paths are relative to the project root.
+
+seed: 42
+
+paths:
+  raw_dir: "data/raw"
+  processed_dir: "data/processed"
+  models_dir: "models"
+  reports_dir: "reports"
+  figures_dir: "reports/figures"
+  metrics_dir: "reports/model_performance"
+
+data:
+  home_credit:
+    n_synthetic_rows: 25000
+    target_col: "TARGET"
+    id_col: "SK_ID_CURR"
+    protected_attributes: ["CODE_GENDER", "AGE_GROUP"]
+  hmda:
+    n_synthetic_rows: 15000
+    target_col: "action_taken_binary"   # 1 = originated, 0 = denied
+    id_col: "loan_id"
+    protected_attributes: ["derived_race", "derived_sex"]
+
+split:
+  test_size: 0.20
+  val_size: 0.10  # taken out of the remaining train portion
+
+models:
+  logistic_regression:
+    max_iter: 2000
+  xgboost:
+    n_estimators: 400
+    tree_method: "hist"
+  lightgbm:
+    n_estimators: 400
+
+tuning:
+  n_trials: 25
+  cv_folds: 5
+  scoring: "roc_auc"
+
+fairness:
+  favorable_label: 0   # in credit default, TARGET=0 (repaid) is the "favorable" outcome
+  disparate_impact_threshold: 0.80
+  mitigation_method: "reweighing"
