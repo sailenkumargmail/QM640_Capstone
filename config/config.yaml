@@ -19,7 +19,12 @@ data:
     protected_attributes: ["CODE_GENDER", "AGE_GROUP"]
   hmda:
     n_synthetic_rows: 15000
-    target_col: "action_taken_binary"   # 1 = originated, 0 = denied
+    # Real data (data/external/HMDA, 2008-2017 legacy LAR extracts, prepared by
+    # scripts/prepare_hmda_real.py) contains ORIGINATED loans only -- no
+    # approval/denial variance. The target is therefore a pricing-disparity
+    # proxy: 1 = higher-priced/HOEPA-reportable loan (rate_spread reported),
+    # 0 = not. See dac/fairness/hmda_audit.py module docstring.
+    target_col: "high_cost_flag"
     id_col: "loan_id"
     protected_attributes: ["derived_race", "derived_sex"]
 
@@ -43,5 +48,6 @@ tuning:
 
 fairness:
   favorable_label: 0   # in credit default, TARGET=0 (repaid) is the "favorable" outcome
+  hmda_favorable_label: 0   # high_cost_flag=0 (not a higher-priced loan) is the "favorable" outcome
   disparate_impact_threshold: 0.80
   mitigation_method: "reweighing"

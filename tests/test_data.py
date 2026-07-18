@@ -27,8 +27,8 @@ def test_home_credit_synthetic_is_deterministic():
 def test_hmda_synthetic_shape_and_target():
     df = generate_hmda_synthetic(n_rows=500, seed=1)
     assert len(df) == 500
-    assert "action_taken_binary" in df.columns
-    assert set(df["action_taken_binary"].unique()) <= {0, 1}
+    assert "high_cost_flag" in df.columns
+    assert set(df["high_cost_flag"].unique()) <= {0, 1}
 
 
 def test_hmda_synthetic_protected_attributes_present():

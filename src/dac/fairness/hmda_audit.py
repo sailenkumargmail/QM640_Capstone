@@ -1,12 +1,22 @@
-"""HMDA fairness-only pipeline: train an approval/denial model on HMDA and
-fairness-audit it. This deliberately does NOT call the target "default" --
-HMDA's action_taken field records the origination decision, not loan
-performance, so it cannot be conflated with Home Credit's TARGET (see
-Synopsis_Credit_Default_XAI_Bias_Mitigation.docx, Background and Context,
-and the mentor/reviewer critique's Cross-Question 1). This module's sole
-purpose is testing whether the SAME fairness-auditing methodology used on
-Home Credit generalizes to a second, independently-labeled dataset and
-decision task.
+"""HMDA fairness-only pipeline: train a model on HMDA and fairness-audit it.
+This deliberately does NOT call the target "default" -- HMDA records mortgage
+origination/pricing outcomes, not loan performance, so it cannot be conflated
+with Home Credit's TARGET (see Synopsis_Credit_Default_XAI_Bias_Mitigation.docx,
+Background and Context, and the mentor/reviewer critique's Cross-Question 1).
+This module's sole purpose is testing whether the SAME fairness-auditing
+methodology used on Home Credit generalizes to a second, independently-labeled
+dataset and decision task.
+
+Real-data note: the extracts under data/external/HMDA/ (2008-2017 legacy LAR,
+prepared by scripts/prepare_hmda_real.py) contain ORIGINATED loans only --
+every row already has action_taken == 1, so there is no approval/denial
+variance to model. The target used here (config: data.hmda.target_col,
+default "high_cost_flag") is therefore a PRICING proxy: 1 = the loan's rate
+spread was reported (a higher-priced/HOEPA-reportable loan under pre-2018 Reg
+Z rules), 0 = not. The fairness question this module answers on real data is
+"among originated loans, are protected groups disproportionately steered into
+higher-priced loans?" -- not "who gets approved?". favorable_label should be
+set accordingly by the caller (0 = not-higher-priced is favorable).
 
 Protected attributes (derived_race, derived_sex) are excluded from the model
 features (used only for the post-hoc fairness audit), matching standard fair-
@@ -37,6 +47,7 @@ def run_hmda_fairness_audit(
     figures_dir: Path,
     metrics_dir: Path,
     seed: int = 42,
+    favorable_label: int = 0,
 ) -> dict:
     df = engineer_hmda_features(df)
     df = df.dropna(subset=[target_col]).reset_index(drop=True)
@@ -61,7 +72,7 @@ def run_hmda_fairness_audit(
 
     y_proba = trained.pipeline.predict_proba(X_test)[:, 1]
     metrics = compute_metrics(y_test.to_numpy(), y_proba)
-    logger.info("HMDA approval-model metrics: %s", metrics)
+    logger.info("HMDA pricing-model (%s) metrics: %s", target_col, metrics)
     plot_evaluation_suite(y_test.to_numpy(), y_proba, "hmda_xgboost", figures_dir)
 
     y_pred = (y_proba >= 0.5).astype(int)
@@ -75,7 +86,7 @@ def run_hmda_fairness_audit(
             attribute_name=attr,
             figures_dir=figures_dir,
             metrics_dir=metrics_dir,
-            favorable_label=1,  # 1 = originated, the favorable HMDA outcome
+            favorable_label=favorable_label,
         )
 
     return {"performance": metrics, "fairness": fairness_results}

@@ -219,12 +219,15 @@ def generate_home_credit_synthetic(n_rows: int = 25_000, seed: int = 42) -> pd.D
 
 
 def generate_hmda_synthetic(n_rows: int = 15_000, seed: int = 7) -> pd.DataFrame:
-    """Simulate a subset of a CFPB HMDA Loan/Application Register (LAR) file
-    (https://ffiec.cfpb.gov/data-browser/). Used ONLY for fairness auditing of
-    an approval/denial model -- HMDA records origination decisions, not loan
-    performance, so it is never treated as a "default" target (see
-    Synopsis_Credit_Default_XAI_Bias_Mitigation.docx, Background and Context,
-    and the reviewer critique in response.txt, Cross-Question 1).
+    """Simulate a subset of a legacy (pre-2018) HMDA Loan/Application Register
+    (LAR) extract of ORIGINATED loans (https://ffiec.cfpb.gov/data-browser/),
+    matching the schema produced by scripts/prepare_hmda_real.py from the real
+    data/external/HMDA/ files. Used ONLY for fairness auditing of a pricing
+    model -- HMDA here records already-originated loans and a higher-priced
+    (high_cost_flag) outcome, not loan performance, so it is never treated as
+    a "default" target (see Synopsis_Credit_Default_XAI_Bias_Mitigation.docx,
+    Background and Context, and the reviewer critique in response.txt,
+    Cross-Question 1).
     """
     rng = np.random.default_rng(seed)
     logger.info("Generating %d synthetic HMDA rows", n_rows)
@@ -278,6 +281,7 @@ def generate_hmda_synthetic(n_rows: int = 15_000, seed: int = 7) -> pd.DataFrame
     ).to_numpy()
 
     # NOTE: synthetic, deliberately-injected bias terms (see module docstring).
+    # Higher-cost-loan risk rises with rate, DTI, LTV; falls with income.
     race_bias = np.where(
         np.isin(derived_race, ["Black or African American", "American Indian or Alaska Native"]),
         0.35,
@@ -285,21 +289,21 @@ def generate_hmda_synthetic(n_rows: int = 15_000, seed: int = 7) -> pd.DataFrame
     )
 
     logit = (
-        1.6
-        - 0.03 * (interest_rate - 6.5)
-        - 0.9 * dti_risk
-        - 0.02 * (loan_to_value_ratio - 80)
-        + 0.20 * np.log1p(income / 60)
-        - race_bias
+        -2.6
+        + 0.35 * (interest_rate - 6.5)
+        + 0.9 * dti_risk
+        + 0.02 * (loan_to_value_ratio - 80)
+        - 0.20 * np.log1p(income / 60)
+        + race_bias
         + rng.normal(0, 0.5, size=n_rows)
     )
-    approve_prob = _sigmoid(logit)
-    action_taken_binary = rng.binomial(1, approve_prob)  # 1 = originated, 0 = denied
+    high_cost_prob = _sigmoid(logit)
+    high_cost_flag = rng.binomial(1, high_cost_prob)  # 1 = higher-priced/HOEPA-reportable loan
 
     df = pd.DataFrame(
         {
             "loan_id": loan_id,
-            "action_taken_binary": action_taken_binary,
+            "high_cost_flag": high_cost_flag,
             "derived_race": derived_race,
             "derived_ethnicity": derived_ethnicity,
             "derived_sex": derived_sex,
@@ -321,5 +325,5 @@ def generate_hmda_synthetic(n_rows: int = 15_000, seed: int = 7) -> pd.DataFrame
         mask = rng.random(n_rows) < frac
         df.loc[mask, col] = np.nan
 
-    logger.info("Synthetic HMDA origination rate: %.4f", df["action_taken_binary"].mean())
+    logger.info("Synthetic HMDA high-cost-loan rate: %.4f", df["high_cost_flag"].mean())
     return df

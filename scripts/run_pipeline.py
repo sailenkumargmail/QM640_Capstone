@@ -10,9 +10,10 @@ Runs, in order:
   7. SHAP explainability on the best-performing tuned model
   8. Fairness audit (pre-mitigation) on CODE_GENDER / AGE_GROUP
   9. Bias mitigation via reweighing + re-train + re-audit (before/after comparison)
- 10. HMDA: load data, train approval/denial model, fairness-audit only
-    (see dac.fairness.hmda_audit module docstring for why this is NOT a
-    second "default" model)
+ 10. HMDA: load data, train a pricing (higher-cost-loan) model, fairness-audit
+    only (see dac.fairness.hmda_audit module docstring for why this is NOT a
+    second "default" model, and why the real 2008-2017 extract's target is a
+    pricing proxy rather than approval/denial)
  11. Persist trained models + a consolidated run_summary.json
 
 Usage:
@@ -272,6 +273,7 @@ def main(quick: bool = False) -> dict:
         figures_dir=figures_dir / "hmda",
         metrics_dir=metrics_dir / "fairness",
         seed=seed,
+        favorable_label=CONFIG["fairness"]["hmda_favorable_label"],
     )
     summary["hmda_results"] = hmda_results
 

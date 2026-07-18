@@ -14,33 +14,55 @@ setup, and running guide.**
   engineering, baseline + tuned models (Logistic Regression, XGBoost),
   evaluation, SHAP explainability, fairness audit, and bias mitigation
   (reweighing) on gender/age.
-- **HMDA** (CFPB mortgage data) — used **only** to fairness-audit an
-  approval/denial model on race/sex. HMDA records the origination decision,
-  not loan performance, so it is never treated as a "default" model or
-  compared apples-to-apples with Home Credit's target (see the
-  mentor/reviewer critique's Cross-Question 1).
+- **HMDA** (CFPB mortgage data) — used **only** to fairness-audit a model on
+  race/sex. The real extract used here (2008-2017 legacy LAR, see below)
+  contains **originated loans only** (no denials), so the audited target is a
+  pricing proxy (`high_cost_flag`: was the loan higher-priced under the
+  pre-2018 Reg Z rate-spread-reporting rule?), not approval/denial. It is
+  never treated as a "default" model or compared apples-to-apples with Home
+  Credit's target (see the mentor/reviewer critique's Cross-Question 1).
 
 ## Data
 
-**No Kaggle credentials were available when this repo was built**, so the
-pipeline runs by default against a **schema-accurate synthetic dataset**
-(see `src/dac/data/synthetic.py`) that mirrors the real column names, dtypes,
-value domains, and missingness patterns of both datasets. A small, clearly
-documented synthetic bias term is injected on the protected attributes so the
-fairness-audit/mitigation stages have a real, known effect to detect and
-correct.
+The pipeline runs against **real data** by default:
 
-To switch to real data:
+- **Home Credit Default Risk** (Kaggle): the full `application_train.csv`
+  (307,511 rows) from `data/external/HCDR/home-credit-default-risk.zip`,
+  extracted to `data/raw/home_credit/`.
+- **HMDA**: `scripts/prepare_hmda_real.py` builds a nationwide sample from the
+  legacy (pre-2018) LAR extracts in `data/external/HMDA/` (2007-2017, one zip
+  per year). Two years (2007, 2011) shipped as truncated/corrupt zip files and
+  are skipped automatically; the remaining 9 years (2008-2010, 2012-2017) are
+  streamed in chunks and randomly subsampled at ~1% per year (reproducible,
+  seeded per year) — full nationwide volume is ~70-90M rows across the decade,
+  too large to load in memory on a typical dev machine and unnecessary for
+  stable model/fairness metrics. The result (~716K rows) is written to
+  `data/raw/hmda/hmda_nationwide_2008_2017_sample.csv`. Because this extract
+  is originated-loans-only, the target is derived rather than a raw field:
+  `high_cost_flag = rate_spread.notna()` (rate_spread was only reported,
+  pre-2018, when a loan's APR exceeded the HOEPA/Reg Z threshold), and
+  `rate_spread`/`hoepa_status` are dropped from the model's features to avoid
+  leaking the label.
+
+If `data/raw/home_credit/application_train.csv` or `data/raw/hmda/hmda_*.csv`
+are absent, `dac.data.loader` transparently falls back to a schema-accurate
+**synthetic dataset** (see `src/dac/data/synthetic.py`) with a small, clearly
+documented synthetic bias term injected on the protected attributes, so the
+fairness-audit/mitigation stages always have a real, known effect to detect
+and correct — no code changes needed either way.
+
+To (re)build real data from scratch:
 ```bash
 # Home Credit (requires Kaggle account + accepted competition rules;
-# credentials at ~/.kaggle/kaggle.json)
+# credentials at ~/.kaggle/kaggle.json) -- OR extract data/external/HCDR/*.zip manually
 python scripts/download_home_credit.py
 
-# HMDA (public CFPB API, no auth required)
+# HMDA modern data via the public CFPB API (no auth required)
 python scripts/download_hmda.py --year 2023 --states MI OH IN IL WI
+
+# OR, HMDA legacy nationwide sample from data/external/HMDA/*.zip
+python scripts/prepare_hmda_real.py --sample-frac 0.01
 ```
-`dac.data.loader` automatically prefers real files under `data/raw/` when
-present and falls back to synthetic data otherwise — no code changes needed.
 
 See `data/README.md` for the expected file layout.
 

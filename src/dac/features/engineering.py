@@ -42,6 +42,10 @@ def engineer_home_credit_features(df: pd.DataFrame) -> pd.DataFrame:
     df["EXT_SOURCE_STD"] = df[["EXT_SOURCE_1", "EXT_SOURCE_2", "EXT_SOURCE_3"]].std(axis=1)
     df["CHILDREN_RATIO"] = df["CNT_CHILDREN"] / df["CNT_FAM_MEMBERS"].replace(0, np.nan)
 
+    df["AGE_GROUP"] = pd.cut(
+        df["AGE_YEARS"], bins=[0, 25, 35, 45, 55, 100], labels=["<25", "25-34", "35-44", "45-54", "55+"]
+    ).astype(str)
+
     return df
 
 
