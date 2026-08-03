@@ -10,13 +10,15 @@ from dataclasses import dataclass
 import numpy as np
 import optuna
 import pandas as pd
+from catboost import CatBoostClassifier
+from interpret.glassbox import ExplainableBoostingClassifier
 from sklearn.compose import ColumnTransformer
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import RandomizedSearchCV, StratifiedKFold, cross_val_score
 from sklearn.pipeline import Pipeline
 from xgboost import XGBClassifier
 
-from dac.models.train import compute_scale_pos_weight
+from dac.models.train import compute_balanced_sample_weight, compute_scale_pos_weight
 from dac.utils.logging_utils import get_logger
 
 logger = get_logger(__name__)
@@ -127,6 +129,105 @@ def tune_xgboost(
 
     return TuningResult(
         name="xgboost",
+        best_params=study.best_params,
+        best_cv_score=float(study.best_value),
+        pipeline=best_pipeline,
+    )
+
+
+def tune_catboost(
+    preprocessor: ColumnTransformer,
+    X_train: pd.DataFrame,
+    y_train: pd.Series,
+    n_trials: int = 20,
+    cv_folds: int = 5,
+    scoring: str = "roc_auc",
+    seed: int = 42,
+) -> TuningResult:
+    logger.info("Tuning CatBoost (Optuna, n_trials=%d)", n_trials)
+    cv = StratifiedKFold(n_splits=cv_folds, shuffle=True, random_state=seed)
+
+    def objective(trial: optuna.Trial) -> float:
+        params = {
+            "n_estimators": trial.suggest_int("n_estimators", 150, 600, step=50),
+            "depth": trial.suggest_int("depth", 3, 9),
+            "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.3, log=True),
+            "l2_leaf_reg": trial.suggest_float("l2_leaf_reg", 1.0, 10.0, log=True),
+            "subsample": trial.suggest_float("subsample", 0.6, 1.0),
+        }
+        clf = CatBoostClassifier(
+            **params,
+            auto_class_weights="Balanced",
+            bootstrap_type="Bernoulli",
+            random_state=seed,
+            verbose=False,
+        )
+        pipeline = Pipeline(steps=[("preprocess", preprocessor), ("clf", clf)])
+        scores = cross_val_score(pipeline, X_train, y_train, scoring=scoring, cv=cv, n_jobs=1)
+        return float(scores.mean())
+
+    study = optuna.create_study(direction="maximize", sampler=optuna.samplers.TPESampler(seed=seed))
+    study.optimize(objective, n_trials=n_trials, show_progress_bar=False)
+
+    logger.info("Best CatBoost params: %s | CV %s=%.4f", study.best_params, scoring, study.best_value)
+
+    best_clf = CatBoostClassifier(
+        **study.best_params,
+        auto_class_weights="Balanced",
+        bootstrap_type="Bernoulli",
+        random_state=seed,
+        verbose=False,
+    )
+    best_pipeline = Pipeline(steps=[("preprocess", preprocessor), ("clf", best_clf)])
+
+    return TuningResult(
+        name="catboost",
+        best_params=study.best_params,
+        best_cv_score=float(study.best_value),
+        pipeline=best_pipeline,
+    )
+
+
+def tune_ebm(
+    preprocessor: ColumnTransformer,
+    X_train: pd.DataFrame,
+    y_train: pd.Series,
+    n_trials: int = 12,
+    cv_folds: int = 3,
+    scoring: str = "roc_auc",
+    seed: int = 42,
+) -> TuningResult:
+    """EBM fits are considerably slower per-trial than XGBoost/CatBoost at
+    this row count, hence the smaller default trial count and CV-fold count.
+    """
+    logger.info("Tuning EBM (Optuna, n_trials=%d)", n_trials)
+    cv = StratifiedKFold(n_splits=cv_folds, shuffle=True, random_state=seed)
+
+    def objective(trial: optuna.Trial) -> float:
+        params = {
+            "max_bins": trial.suggest_categorical("max_bins", [128, 256, 512]),
+            "max_leaves": trial.suggest_int("max_leaves", 2, 4),
+            "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.1, log=True),
+            "outer_bags": trial.suggest_int("outer_bags", 2, 4),
+        }
+        # n_jobs=1: repeated multiprocessing-pool spin-up per fit dominates
+        # wall-clock at this row count far more than sequential outer bags
+        # would (see dac.models.train.build_ebm_pipeline).
+        clf = ExplainableBoostingClassifier(**params, random_state=seed, n_jobs=1)
+        pipeline = Pipeline(steps=[("preprocess", preprocessor), ("clf", clf)])
+        scores = cross_val_score(pipeline, X_train, y_train, scoring=scoring, cv=cv, n_jobs=1)
+        return float(scores.mean())
+
+    study = optuna.create_study(direction="maximize", sampler=optuna.samplers.TPESampler(seed=seed))
+    study.optimize(objective, n_trials=n_trials, show_progress_bar=False)
+
+    logger.info("Best EBM params: %s | CV %s=%.4f", study.best_params, scoring, study.best_value)
+
+    best_clf = ExplainableBoostingClassifier(**study.best_params, random_state=seed, n_jobs=1)
+    best_pipeline = Pipeline(steps=[("preprocess", preprocessor), ("clf", best_clf)])
+
+    return TuningResult(
+        name="ebm",
         best_params=study.best_params,
         best_cv_score=float(study.best_value),
         pipeline=best_pipeline,

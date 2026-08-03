@@ -1,55 +1,45 @@
 # Data directory
 
 This directory is gitignored (except this file and `.gitkeep` placeholders) —
-data is downloaded/generated locally, not committed.
+data is downloaded/prepared locally, not committed.
 
 ## Expected layout
 
 ```
 data/
 ├── raw/
-│   ├── home_credit/
-│   │   ├── application_train.csv     # extracted from external/HCDR/*.zip (or scripts/download_home_credit.py)
-│   │   └── HomeCredit_columns_description.csv
-│   ├── hmda/
-│   │   └── hmda_nationwide_2008_2017_sample.csv   # from scripts/prepare_hmda_real.py
-│   ├── home_credit_synthetic.parquet  # auto-generated fallback (cached)
-│   └── hmda_synthetic.parquet         # auto-generated fallback (cached)
-├── processed/                          # intermediate engineered features (optional cache)
+│   ├── uci_credit/
+│   │   └── default_of_credit_card_clients.csv   # prepared by scripts/prepare_uci_credit.py
+│   └── uci_credit_synthetic.parquet              # auto-generated fallback (cached)
+├── processed/                                     # intermediate engineered features (optional cache)
 └── external/
-    ├── HCDR/home-credit-default-risk.zip                       # raw Kaggle download
-    └── HMDA/hmda_<year>_nationwide_originated-records_labels.zip # raw legacy LAR extracts, 2007-2017
+    └── UCI/default of credit card clients.xls     # raw UCI source export
 ```
 
 ## How data gets here
 
-`dac.data.loader.load_home_credit()` and `load_hmda()` check for real files
-first (`data/raw/home_credit/application_train.csv`,
-`data/raw/hmda/hmda_*.csv`). If absent, they transparently fall back to a
-schema-accurate synthetic dataset (`dac.data.synthetic`), generate it once,
-and cache it as a parquet file in `data/raw/` so repeated pipeline runs don't
-regenerate it.
+`dac.data.loader.load_uci_credit()` checks for the prepared real file first
+(`data/raw/uci_credit/default_of_credit_card_clients.csv`). If absent, it
+transparently falls back to a schema-accurate synthetic dataset
+(`dac.data.synthetic`), generates it once, and caches it as a parquet file in
+`data/raw/` so repeated pipeline runs don't regenerate it.
 
 ## Getting real data
 
-- **Home Credit Default Risk**: the full dataset ships as
-  `data/external/HCDR/home-credit-default-risk.zip`; only `application_train.csv`
-  (the only file with labels) is extracted to `data/raw/home_credit/`. To
-  re-download instead (requires a Kaggle account that has accepted the
-  competition rules + API credentials at `~/.kaggle/kaggle.json`):
-  `python scripts/download_home_credit.py`
-- **HMDA**: two sources are supported —
-  - Legacy nationwide LAR extracts (2007-2017) ship as one zip per year under
-    `data/external/HMDA/`. `python scripts/prepare_hmda_real.py` streams each
-    (chunked, since files run up to 5.6GB uncompressed), skips any
-    truncated/corrupt year, takes a reproducible ~1% per-year subsample, adapts
-    legacy column names to the modern schema (`derived_race`, `derived_sex`,
-    `income`, `loan_amount`), and derives `high_cost_flag` from `rate_spread`
-    (see README.md § Data for why — this extract is originated-loans-only, so
-    there's no approval/denial field to model). Writes
-    `data/raw/hmda/hmda_nationwide_2008_2017_sample.csv`.
-  - Modern per-state/year data via the public CFPB Data Browser API (no auth):
-    `python scripts/download_hmda.py --year 2023 --states MI OH IN IL WI`
+The raw source file ships as `data/external/UCI/default of credit card
+clients.xls` (Yeh, I-C., & Lien, C. (2009). The comparisons of data mining
+techniques for the predictive accuracy of probability of default of credit
+card clients. *Expert Systems with Applications*, *36*(2), 2473–2480; UCI
+Machine Learning Repository, https://archive.ics.uci.edu/dataset/350).
 
-Kaggle competition data carries redistribution restrictions — do not commit
-raw Home Credit CSVs to this (or any public) repository.
+To prepare it for the pipeline (renames the target column, maps `SEX` to
+`Male`/`Female`, collapses undocumented `EDUCATION`/`MARRIAGE` codes into
+`"Other/Unknown"`, writes a plain CSV):
+
+```bash
+python scripts/prepare_uci_credit.py
+```
+
+No further code changes are needed afterward — `dac.data.loader` detects the
+prepared file under `data/raw/uci_credit/` and prefers it automatically over
+the synthetic fallback.

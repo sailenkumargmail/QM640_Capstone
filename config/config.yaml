@@ -12,21 +12,14 @@ paths:
   metrics_dir: "reports/model_performance"
 
 data:
-  home_credit:
-    n_synthetic_rows: 25000
-    target_col: "TARGET"
-    id_col: "SK_ID_CURR"
-    protected_attributes: ["CODE_GENDER", "AGE_GROUP"]
-  hmda:
-    n_synthetic_rows: 15000
-    # Real data (data/external/HMDA, 2008-2017 legacy LAR extracts, prepared by
-    # scripts/prepare_hmda_real.py) contains ORIGINATED loans only -- no
-    # approval/denial variance. The target is therefore a pricing-disparity
-    # proxy: 1 = higher-priced/HOEPA-reportable loan (rate_spread reported),
-    # 0 = not. See dac/fairness/hmda_audit.py module docstring.
-    target_col: "high_cost_flag"
-    id_col: "loan_id"
-    protected_attributes: ["derived_race", "derived_sex"]
+  uci_credit:
+    n_synthetic_rows: 6000
+    # Real data: data/external/UCI/default of credit card clients.xls
+    # (Yeh & Lien, 2009; UCI ML Repository, 30,000 rows), prepared by
+    # scripts/prepare_uci_credit.py into data/raw/uci_credit/.
+    target_col: "DEFAULT_PAYMENT_NEXT_MONTH"
+    id_col: "ID"
+    protected_attributes: ["SEX", "AGE_GROUP"]
 
 split:
   test_size: 0.20
@@ -38,16 +31,20 @@ models:
   xgboost:
     n_estimators: 400
     tree_method: "hist"
-  lightgbm:
+  catboost:
     n_estimators: 400
+  ebm:
+    max_bins: 256
 
 tuning:
   n_trials: 25
   cv_folds: 5
   scoring: "roc_auc"
+  catboost_n_trials: 20
+  ebm_n_trials: 6
 
 fairness:
-  favorable_label: 0   # in credit default, TARGET=0 (repaid) is the "favorable" outcome
-  hmda_favorable_label: 0   # high_cost_flag=0 (not a higher-priced loan) is the "favorable" outcome
+  favorable_label: 0   # in credit default, DEFAULT_PAYMENT_NEXT_MONTH=0 (repaid) is the "favorable" outcome
   disparate_impact_threshold: 0.80
   mitigation_method: "reweighing"
+  mitigation_attribute: "SEX"

@@ -50,8 +50,8 @@ def audit_fairness(
     favorable_label: int = 0,
 ) -> dict:
     """favorable_label: which class of y_pred counts as the "favorable"
-    outcome for selection-rate purposes (0 = loan repaid / not-default for
-    Home Credit's TARGET; 1 = originated for HMDA's action_taken_binary).
+    outcome for selection-rate purposes (0 = repaid / not-default for the
+    UCI DEFAULT_PAYMENT_NEXT_MONTH target).
     """
     figures_dir = Path(figures_dir)
     metrics_dir = Path(metrics_dir)

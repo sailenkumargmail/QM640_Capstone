@@ -1,8 +1,8 @@
-"""Feature engineering for Home Credit and HMDA.
+"""Feature engineering for the UCI "default of credit card clients" dataset.
 
-Deliberately generic column handling (auto-detect numeric vs. categorical)
-so this also works unmodified against the real, much wider Kaggle
-application_train.csv once scripts/download_home_credit.py has been run.
+Deliberately generic column handling for the split-columns / preprocessor
+helpers so the same code works against either the real prepared extract
+(scripts/prepare_uci_credit.py) or the schema-accurate synthetic fallback.
 """
 from __future__ import annotations
 
@@ -17,41 +17,32 @@ from dac.utils.logging_utils import get_logger
 
 logger = get_logger(__name__)
 
-HOME_CREDIT_ANOMALY_SENTINEL = 365243
+PAY_STATUS_COLS = ["PAY_0", "PAY_2", "PAY_3", "PAY_4", "PAY_5", "PAY_6"]
+BILL_AMT_COLS = [f"BILL_AMT{i}" for i in range(1, 7)]
+PAY_AMT_COLS = [f"PAY_AMT{i}" for i in range(1, 7)]
 
 
-def engineer_home_credit_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Derive human-interpretable features from Home Credit's DAYS_* / AMT_*
-    columns. Mirrors the well-known feature-engineering conventions for this
-    dataset (age in years, employment anomaly flag, income/credit ratios).
+def engineer_uci_credit_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Derive credit-utilization and repayment-behavior features from the
+    six months of billing/payment history, mirroring standard credit-risk
+    feature-engineering conventions for this dataset (Yeh & Lien, 2009).
     """
     df = df.copy()
 
-    df["AGE_YEARS"] = (-df["DAYS_BIRTH"] / 365.25).round(1)
-
-    df["DAYS_EMPLOYED_ANOM"] = (df["DAYS_EMPLOYED"] == HOME_CREDIT_ANOMALY_SENTINEL).astype(int)
-    days_employed_clean = df["DAYS_EMPLOYED"].replace(HOME_CREDIT_ANOMALY_SENTINEL, np.nan)
-    df["YEARS_EMPLOYED"] = (-days_employed_clean / 365.25).round(1)
-
-    df["CREDIT_INCOME_RATIO"] = df["AMT_CREDIT"] / df["AMT_INCOME_TOTAL"].replace(0, np.nan)
-    df["ANNUITY_INCOME_RATIO"] = df["AMT_ANNUITY"] / df["AMT_INCOME_TOTAL"].replace(0, np.nan)
-    df["CREDIT_TERM"] = df["AMT_ANNUITY"] / df["AMT_CREDIT"].replace(0, np.nan)
-    df["DAYS_EMPLOYED_PERC"] = days_employed_clean / df["DAYS_BIRTH"].replace(0, np.nan)
-    df["GOODS_CREDIT_RATIO"] = df["AMT_GOODS_PRICE"] / df["AMT_CREDIT"].replace(0, np.nan)
-    df["EXT_SOURCE_MEAN"] = df[["EXT_SOURCE_1", "EXT_SOURCE_2", "EXT_SOURCE_3"]].mean(axis=1)
-    df["EXT_SOURCE_STD"] = df[["EXT_SOURCE_1", "EXT_SOURCE_2", "EXT_SOURCE_3"]].std(axis=1)
-    df["CHILDREN_RATIO"] = df["CNT_CHILDREN"] / df["CNT_FAM_MEMBERS"].replace(0, np.nan)
-
     df["AGE_GROUP"] = pd.cut(
-        df["AGE_YEARS"], bins=[0, 25, 35, 45, 55, 100], labels=["<25", "25-34", "35-44", "45-54", "55+"]
+        df["AGE"], bins=[0, 25, 35, 45, 55, 100], labels=["<25", "25-34", "35-44", "45-54", "55+"]
     ).astype(str)
 
-    return df
+    df["AVG_BILL_AMT"] = df[BILL_AMT_COLS].mean(axis=1)
+    df["AVG_PAY_AMT"] = df[PAY_AMT_COLS].mean(axis=1)
+    df["BILL_LIMIT_RATIO"] = df["AVG_BILL_AMT"] / df["LIMIT_BAL"].replace(0, np.nan)
+    df["PAY_TO_BILL_RATIO"] = df["AVG_PAY_AMT"] / df["AVG_BILL_AMT"].replace(0, np.nan)
+    df["BILL_AMT_TREND"] = df["BILL_AMT1"] - df["BILL_AMT6"]
 
+    df["MAX_DELINQUENCY"] = df[PAY_STATUS_COLS].max(axis=1)
+    df["MEAN_DELINQUENCY"] = df[PAY_STATUS_COLS].mean(axis=1)
+    df["MONTHS_DELINQUENT"] = (df[PAY_STATUS_COLS] > 0).sum(axis=1)
 
-def engineer_hmda_features(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-    df["LOAN_INCOME_RATIO"] = df["loan_amount"] / (df["income"] * 1000).replace(0, np.nan)
     return df
 
 
@@ -70,8 +61,9 @@ def split_feature_columns(
 
 
 def build_preprocessor(numeric_cols: list[str], categorical_cols: list[str]) -> ColumnTransformer:
-    """A standard impute+scale / impute+one-hot ColumnTransformer usable by
-    both linear models (Logistic Regression) and tree ensembles.
+    """A standard impute+scale / impute+one-hot ColumnTransformer, shared
+    identically by all four model families (Logistic Regression, XGBoost,
+    CatBoost, EBM) so SHAP and fairness results are comparable across models.
     """
     numeric_pipeline = Pipeline(
         steps=[
@@ -85,13 +77,18 @@ def build_preprocessor(numeric_cols: list[str], categorical_cols: list[str]) -> 
             ("onehot", OneHotEncoder(handle_unknown="ignore", sparse_output=False)),
         ]
     )
-    return ColumnTransformer(
+    preprocessor = ColumnTransformer(
         transformers=[
             ("num", numeric_pipeline, numeric_cols),
             ("cat", categorical_pipeline, categorical_cols),
         ],
         remainder="drop",
     )
+    # Pandas output (not a bare ndarray) so downstream estimators -- notably
+    # EBM, which reads column names directly off its input -- see the same
+    # feature names SHAP is explicitly given via get_feature_names_out().
+    preprocessor.set_output(transform="pandas")
+    return preprocessor
 
 
 def get_output_feature_names(preprocessor: ColumnTransformer) -> list[str]:

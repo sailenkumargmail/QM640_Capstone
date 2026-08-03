@@ -25,6 +25,8 @@ logger = get_logger(__name__)
 def _transform(pipeline: Pipeline, X: pd.DataFrame) -> tuple[np.ndarray, list[str]]:
     preprocessor = pipeline.named_steps["preprocess"]
     X_t = preprocessor.transform(X)
+    if isinstance(X_t, pd.DataFrame):
+        X_t = X_t.to_numpy()
     feature_names = list(preprocessor.get_feature_names_out())
     return X_t, feature_names
 
@@ -52,7 +54,7 @@ def explain_model(
     logger.info("Computing SHAP values for %s (%d background, %d explain rows)", model_name, len(X_bg_t), len(X_ex_t))
 
     model_type = type(clf).__name__
-    if "XGB" in model_type or "LGBM" in model_type:
+    if "XGB" in model_type or "LGBM" in model_type or "CatBoost" in model_type:
         explainer = shap.TreeExplainer(clf)
         shap_values = explainer.shap_values(X_ex_t)
     else:
