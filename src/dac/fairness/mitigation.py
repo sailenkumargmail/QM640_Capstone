@@ -41,3 +41,19 @@ def compute_reweighing_weights(y: pd.Series, sensitive_feature: pd.Series) -> np
         weights.min(), weights.max(), weights.mean(),
     )
     return weights
+
+
+def build_joint_group(df: pd.DataFrame, attrs: list[str]) -> pd.Series:
+    """Concatenate two or more protected-attribute columns into a single
+    joint-group label (e.g. SEX x AGE_GROUP -> "1_25-34"), so the existing
+    single-attribute ``compute_reweighing_weights`` can be reused unchanged
+    to reweigh on the intersection of several attributes at once (a joint
+    sensitivity analysis, vs. mitigating on one attribute at a time).
+    """
+    if len(attrs) < 2:
+        raise ValueError("build_joint_group needs at least 2 attributes")
+    joint = df[attrs[0]].astype(str)
+    for attr in attrs[1:]:
+        joint = joint + "_" + df[attr].astype(str)
+    joint.name = "_".join(attrs)
+    return joint
