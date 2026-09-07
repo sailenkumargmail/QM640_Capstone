@@ -13,7 +13,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
+from matplotlib.patches import FancyArrowPatch, FancyBboxPatch, Patch
 
 REPO = Path(__file__).resolve().parents[1]
 OUT_PATH = REPO / "reports" / "figures" / "report_evidence" / "rq_solution_flowchart.png"
@@ -140,6 +140,19 @@ def build():
     ax.set_title(
         "Solution Flow and RQ1-RQ4 Lineage: UCI Credit-Card Default Pipeline",
         fontsize=13, fontweight="bold", pad=14,
+    )
+
+    legend_elements = [
+        Patch(facecolor=PIPELINE_COLOR, edgecolor=PIPELINE_COLOR, alpha=0.18, label="Pipeline stage"),
+        Patch(facecolor=MODEL_COLOR, edgecolor=MODEL_COLOR, alpha=0.18, label="Model training"),
+        Patch(facecolor=RQ_COLOR, edgecolor=RQ_COLOR, alpha=0.18, label="Research question"),
+        Patch(facecolor="#9b9b9b", edgecolor="#9b9b9b", alpha=0.18, label="Output / finding"),
+        Patch(facecolor=OUTPUT_COLOR, edgecolor=OUTPUT_COLOR, alpha=0.18, label="Synthesis / decision"),
+    ]
+    ax.legend(
+        handles=legend_elements, loc="upper center", bbox_to_anchor=(0.5, -0.02),
+        ncol=5, frameon=False, fontsize=9, handlelength=1.4, handleheight=1.4,
+        columnspacing=1.4,
     )
 
     fig.tight_layout()
